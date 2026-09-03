@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HELIOS — FHIR over CLIF — Plan</title>
+<style>
+  :root{
+    --bg:#fbfaf7; --panel:#fff; --ink:#1a1a1a; --dim:#5f5f5f; --line:#e2ded6;
+    --accent:#a33; --accent2:#2a6; --code-bg:#f4f2ec; --shadow:0 1px 2px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#14151a; --panel:#1b1d23; --ink:#e8e6e1; --dim:#9a978f; --line:#2c2f37;
+           --accent:#e77; --accent2:#5c9; --code-bg:#111318; --shadow:none; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+  .wrap{max-width:1000px;margin:0 auto;padding:48px 24px 96px}
+  header{border-bottom:2px solid var(--ink);padding-bottom:20px;margin-bottom:8px}
+  h1{font-size:30px;margin:0 0 6px;letter-spacing:-.02em}
+  .sub{color:var(--dim);font-size:14px}
+  .tag{display:inline-block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+       border:1px solid var(--line);border-radius:3px;padding:2px 7px;margin-right:6px;color:var(--dim)}
+  h2{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);
+     margin:44px 0 14px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  h3{font-size:15px;margin:26px 0 8px}
+  p{margin:0 0 12px}
+  pre{background:var(--code-bg);border:1px solid var(--line);border-radius:5px;
+      padding:14px 16px;overflow-x:auto;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+      margin:0 0 16px}
+  code{background:var(--code-bg);padding:1px 5px;border-radius:3px;
+       font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace}
+  table{border-collapse:collapse;width:100%;margin:0 0 16px;font-size:13.5px}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:600}
+  tbody tr:hover{background:var(--code-bg)}
+  .num{font:12.5px ui-monospace,Menlo,monospace;text-align:right;white-space:nowrap}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+        padding:16px 18px;margin:0 0 16px;box-shadow:var(--shadow)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:16px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px}
+  .stat b{display:block;font:22px/1.2 ui-monospace,Menlo,monospace;color:var(--accent)}
+  .stat span{font-size:12px;color:var(--dim)}
+  .bar{display:grid;grid-template-columns:210px 1fr 90px;gap:10px;align-items:center;
+       margin-bottom:5px;font-size:12.5px}
+  .bar .t{font-family:ui-monospace,Menlo,monospace;color:var(--dim);
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bar .track{background:var(--code-bg);border-radius:3px;height:16px;overflow:hidden}
+  .bar .fill{height:100%;background:var(--accent);border-radius:3px}
+  .bar .fill.g{background:var(--accent2)}
+  .bar .v{font-family:ui-monospace,Menlo,monospace;text-align:right;color:var(--dim)}
+  .good{color:var(--accent2);font-weight:600}
+  .bad{color:var(--accent);font-weight:600}
+  ol,ul{margin:0 0 14px;padding-left:22px} li{margin-bottom:5px}
+  .note{border-left:3px solid var(--accent);padding:2px 0 2px 14px;color:var(--dim);
+        font-size:13.5px;margin:0 0 16px}
+  footer{margin-top:56px;padding-top:16px;border-top:1px solid var(--line);
+         color:var(--dim);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>HELIOS — a FHIR facade over CLIF</h1>
+  <div class="sub">Healthcare Environment for Learning, Inference, Observation Simulation<br>
+  Design approved 2026-09-03 · spec: <code>docs/superpowers/specs/2026-09-03-helios-fhir-mcp-design.md</code></div>
+</header>
+<p style="margin-top:14px">
+  <span class="tag">read-only</span><span class="tag">FHIR R4</span>
+  <span class="tag">lazy facade</span><span class="tag">MIMIC-CLIF</span>
+  <span class="tag">2 containers</span>
+</p>
+
+<h2>What we are building</h2>
+<p>CLIF stores ICU data as columnar parquet, one row per measurement. Agents consume FHIR,
+because that is what every EHR exposes. HELIOS makes CLIF readable as FHIR, then puts an MCP
+layer on top so an agent asks for data as tool calls instead of HTTP.</p>
+
+<div class="grid">
+  <div class="stat"><b>12</b><span>CLIF tables in scope</span></div>
+  <div class="stat"><b>6</b><span>FHIR resource types</span></div>
+  <div class="stat"><b>~145M</b><span>source rows</span></div>
+  <div class="stat"><b>54</b><span>LOINC codes to curate</span></div>
+</div>
+
+<div class="card">
+<b>Two services, one-way dependency.</b> <code>helios-fhir</code> is a read-only FHIR R4
+server over CLIF parquet — it runs standalone and knows nothing about agents.
+<code>helios-mcp</code> exposes tools to agents and speaks <em>only</em> FHIR REST upward.
+It holds no data and never touches parquet. Delete <code>helios-mcp</code> and the FHIR
+server still works with <code>curl</code>.
+</div>
+
+<h2>Decisions</h2>
+<table>
+<thead><tr><th style="width:26px">#</th><th style="width:34%">Decision</th><th>Consequence</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><b>Read-only</b></td><td>No POST/PUT/DELETE. Parquet never mutated, no reset logic, reproducible by construction. Write verbs → <code>405</code>.</td></tr>
+<tr><td>2</td><td><b>CLIF Beta tables only</b>, minus <code>code_status</code></td><td>12 tables. <code>crrt_therapy</code> and <code>ecmo_mcs</code> excluded although the files exist.</td></tr>
+<tr><td>3</td><td><b>Hybrid terminology</b></td><td>Standard codes where the data has them; curated LOINC for vitals + labs; CLIF-native local CodeSystems elsewhere.</td></tr>
+<tr><td>4</td><td><b>Static bearer + real SMART scopes</b></td><td>Real discovery doc, real scope enforcement, real 401/403. No JWT ceremony. Localhost only.</td></tr>
+<tr><td>5</td><td><b>Per-request as-of clock</b></td><td><code>X-As-Of</code> filters every <code>*_dttm</code> to <code>&lt;= T</code>. Blocks look-ahead leakage in evals.</td></tr>
+<tr><td>6</td><td><b>Native MIMIC dates</b></td><td>No shifting. Stays remain in the 2100s. No offset table, no timestamp transforms.</td></tr>
+<tr><td>7</td><td><b>Lazy translate-on-read</b></td><td>FHIR resources are projections built per request and discarded. Nothing materialised.</td></tr>
+<tr><td>8</td><td><b>Searches need patient context</b></td><td>Keeps every query prunable. Matches Epic, which mandates <code>patient</code> on nearly every search.</td></tr>
+</tbody>
+</table>
+
+<h2>Architecture</h2>
+<pre>┌──────────────────────────────────────────────────────────────────┐
+│  helios-mcp                        container 2, deletable        │
+│  MCP tools over FHIR REST + bearer token. No parquet access.     │
+└───────────────────────────┬──────────────────────────────────────┘
+                            │  HTTP   Authorization: Bearer &lt;token&gt;
+                            │         X-As-Of: 2110-03-15T08:00:00Z
+┌───────────────────────────▼──────────────────────────────────────┐
+│  helios-fhir                       container 1, runs standalone  │
+│                                                                  │
+│   app.py       routes: /fhir/{Type}, /fhir/{Type}/{id},          │
+│                /fhir/metadata, /.well-known/smart-configuration  │
+│   auth.py      bearer -&gt; scopes; enforce system/{Type}.rs        │
+│   clock.py     parse X-As-Of -&gt; a single SQL predicate           │
+│   search.py    FHIR search params -&gt; SQL predicates              │
+│   store.py     DuckDB over sorted parquet + encounter index      │
+│   mappers/     one module per resource type                      │
+│   codes/       vitals_loinc.csv, labs_loinc.csv, systems.py      │
+└───────────────────────────┬──────────────────────────────────────┘
+                            │ read-only, never mutated
+                 /Users/sudo_sage/Downloads/work/clif_m/*.parquet</pre>
+
+<h2>The data</h2>
+<p>Source: <code>/Users/sudo_sage/Downloads/work/clif_m</code> (MIMIC-CLIF). Nothing outside
+this directory is used. Row counts, log-scaled bars:</p>
+
+<div class="bar"><div class="t">vitals</div><div class="track"><div class="fill" style="width:100%"></div></div><div class="v">55.5M</div></div>
+<div class="bar"><div class="t">labs</div><div class="track"><div class="fill" style="width:97%"></div></div><div class="v">44.9M</div></div>
+<div class="bar"><div class="t">patient_assessments</div><div class="track"><div class="fill" style="width:90%"></div></div><div class="v">19.4M</div></div>
+<div class="bar"><div class="t">medication_admin_continuous</div><div class="track"><div class="fill" style="width:80%"></div></div><div class="v">7.56M</div></div>
+<div class="bar"><div class="t">hospital_diagnosis</div><div class="track"><div class="fill" style="width:78%"></div></div><div class="v">6.36M</div></div>
+<div class="bar"><div class="t">medication_admin_intermittent</div><div class="track"><div class="fill" style="width:72%"></div></div><div class="v">3.25M</div></div>
+<div class="bar"><div class="t">position</div><div class="track"><div class="fill" style="width:71%"></div></div><div class="v">3.16M</div></div>
+<div class="bar"><div class="t">respiratory_support</div><div class="track"><div class="fill" style="width:67%"></div></div><div class="v">2.15M</div></div>
+<div class="bar"><div class="t">adt</div><div class="track"><div class="fill" style="width:64%"></div></div><div class="v">1.46M</div></div>
+<div class="bar"><div class="t">patient_procedures</div><div class="track"><div class="fill" style="width:61%"></div></div><div class="v">1.05M</div></div>
+<div class="bar"><div class="t">hospitalization</div><div class="track"><div class="fill" style="width:52%"></div></div><div class="v">546k</div></div>
+<div class="bar"><div class="t">patient</div><div class="track"><div class="fill" style="width:48%"></div></div><div class="v">365k</div></div>
+
+<h3>Coding coverage — measured, not assumed</h3>
+<table>
+<thead><tr><th>Column</th><th>Populated</th><th>Consequence</th></tr></thead>
+<tbody>
+<tr><td><code>hospital_diagnosis.diagnosis_code</code></td><td class="good">100%</td><td>ICD10CM 3.46M / ICD9CM 2.91M → <code>Condition.code</code> free</td></tr>
+<tr><td><code>patient_procedures.procedure_code</code></td><td class="good">100%</td><td>ICD9 469k / ICD10PCS 390k / CPT 116k / HCPCS 70k → <code>Procedure.code</code> free</td></tr>
+<tr><td><code>labs.lab_loinc_code</code></td><td class="bad">0%</td><td>Column exists, entirely null. LOINC must be curated by hand.</td></tr>
+</tbody>
+</table>
+<div class="note">Curation bill: <b>54 rows</b> — 9 vital categories and 45 lab categories present in
+this export. Medications (178 categories) and assessments (72) stay CLIF-native.</div>
+
+<h3>Declared Beta but absent from this export</h3>
+<p><code>microbiology_culture</code> and <code>microbiology_susceptibility</code>. Their endpoints
+are <em>declared</em> and return empty <code>searchset</code> bundles with <code>total: 0</code>.
+An agent must be able to tell "no cultures on this patient" apart from "the tool is broken" —
+a <code>404</code> would conflate them.</p>
+
+<h2>Why lazy, not materialised</h2>
+<pre> EAGER / MATERIALISED  (what MedAgentBench + HAPI JPA do)
+   build step ──► translate every CLIF row ──► store ~145M FHIR resources
+                                                      │
+   request ─────────────────────────────────────────► └─► read one out
+   • fast reads   • mapping change = full rebuild   • parquet & FHIR can drift
+
+ LAZY / TRANSLATE-ON-READ   ◄── chosen
+   request ──► query parquet ──► translate the ~40 rows that matched ──► respond
+                                                                          │
+                                                            discarded ◄───┘
+   • nothing stored  • mapping change = restart  • cannot drift, one copy of the data</pre>
+<p>FHIR JSON runs 10–50× the size of columnar parquet, so materialising 1.1 GB produces tens
+of GB plus a multi-hour build, rebuilt on every mapping change. Both hard constraints make it
+worse rather than better: the as-of clock means the useful unit is "rows before T", which a
+resource store does not help with, and decision 1 removes the writes materialisation exists to
+serve. Lazy makes the FHIR layer <b>a function, not a copy</b>.</p>
+
+<h2>Storage layout — settled by our own benchmark</h2>
+<p>The 12 tables get re-sorted by <code>hospitalization_id</code> once, offline. Not a guess —
+<code>clif_partition_benchmark/results/report.md</code> measured it. Bytes a reader must touch,
+labs, cohort size 100:</p>
+
+<div class="bar"><div class="t">sorted by hospitalization_id</div><div class="track"><div class="fill g" style="width:23%"></div></div><div class="v">14.3 MB</div></div>
+<div class="bar"><div class="t">hive by 10k-hosp bucket</div><div class="track"><div class="fill g" style="width:28%"></div></div><div class="v">17.7 MB</div></div>
+<div class="bar"><div class="t">single, unsorted</div><div class="track"><div class="fill" style="width:98%"></div></div><div class="v">61.5 MB</div></div>
+<div class="bar"><div class="t">single, sorted by year</div><div class="track"><div class="fill" style="width:99%"></div></div><div class="v">61.9 MB</div></div>
+<div class="bar"><div class="t">hive by year</div><div class="track"><div class="fill" style="width:100%"></div></div><div class="v">62.5 MB</div></div>
+
+<p>The mechanism is row-group min/max statistics. Sorting by <code>hospitalization_id</code>
+makes them tight and non-overlapping, so the reader skips row groups without decompressing
+them. Partitioning by <em>year</em> cannot help — an ID predicate carries no year information
+to prune on. A FHIR server's characteristic query is a single hospitalization: the regime where
+sorting wins ~4× and partitioning wins nothing.</p>
+
+<p>Alongside it, an <b>encounter index</b>: 546,028 rows of <code>(hospitalization_id,
+patient_id, admission_dttm, discharge_dttm)</code>, ~15 MB, held in memory. It answers identity
+resolution and stay bounds without touching a fact table.</p>
+
+<h2>Resource mapping — 12 tables → 6 types</h2>
+<table>
+<thead><tr><th>CLIF table</th><th>FHIR resource</th><th>Coding</th></tr></thead>
+<tbody>
+<tr><td><code>patient</code></td><td>Patient</td><td>US Core race/ethnicity extensions</td></tr>
+<tr><td><code>hospitalization</code> + <code>adt</code></td><td>Encounter (+ <code>.location[]</code>)</td><td>CLIF-native class</td></tr>
+<tr><td><code>vitals</code></td><td>Observation <span style="color:var(--dim)">(vital-signs)</span></td><td class="good">LOINC — 9-row map</td></tr>
+<tr><td><code>labs</code></td><td>Observation <span style="color:var(--dim)">(laboratory)</span></td><td class="good">LOINC — 45-row map</td></tr>
+<tr><td><code>patient_assessments</code></td><td>Observation <span style="color:var(--dim)">(survey)</span></td><td>CLIF-native</td></tr>
+<tr><td><code>respiratory_support</code></td><td>Observation</td><td>CLIF-native</td></tr>
+<tr><td><code>position</code></td><td>Observation</td><td>CLIF-native</td></tr>
+<tr><td><code>medication_admin_continuous</code></td><td>MedicationAdministration</td><td>CLIF-native</td></tr>
+<tr><td><code>medication_admin_intermittent</code></td><td>MedicationAdministration</td><td>CLIF-native</td></tr>
+<tr><td><code>hospital_diagnosis</code></td><td>Condition</td><td class="good">ICD-10-CM / ICD-9-CM — free</td></tr>
+<tr><td><code>patient_procedures</code></td><td>Procedure</td><td class="good">CPT / ICD10PCS / HCPCS — free</td></tr>
+<tr><td><em>(absent)</em> <code>microbiology_*</code></td><td>Observation</td><td>declared, empty bundles</td></tr>
+</tbody>
+</table>
+
+<h3>Resource identity</h3>
+<p><code>Patient.id</code> = <code>patient_id</code>; <code>Encounter.id</code> =
+<code>hospitalization_id</code>, both straight from CLIF. Fact rows have no natural key, so
+resource ids are <b>content-addressed rather than surrogate</b>:</p>
+<pre>{table}-{hospitalization_id}-{epoch_seconds}-{category}</pre>
+<p>The id encodes enough to re-find the source row, so <code>GET /fhir/Observation/{id}</code>
+is itself a lazy lookup with no id-to-row index. Ids are stable across restarts because they
+are derived from the data, not assigned.</p>
+
+<h2>Request flow</h2>
+<p><code>GET /fhir/Observation?patient=P123&amp;code=creatinine</code> with
+<code>X-As-Of: 2110-03-15T08:00:00Z</code></p>
+<pre> 1  auth.py     bearer -&gt; scopes; require system/Observation.rs
+ 2  search.py   reject if no patient/encounter context (400 + OperationOutcome)
+ 3  store.py    encounter index point-lookup -&gt; hospitalization_id, stay bounds
+ 4  store.py    one DuckDB query against the sorted parquet:
+                  WHERE hospitalization_id = 'H456'
+                    AND lab_category      = 'creatinine'
+                    AND lab_result_dttm  &lt;= '2110-03-15 08:00:00'
+ 5  DuckDB      column pruning     -&gt; 5 of 14 columns
+                row-group pruning  -&gt; min/max on hospitalization_id
+                -&gt; ~40 rows out of 44,880,526
+ 6  mappers/observation.py   rows -&gt; FHIR Observation dicts
+ 7  app.py      wrap in searchset Bundle, serialise, respond
+ 8  ─────────── resources garbage collected, nothing persisted ───────────</pre>
+
+<h2>The clock</h2>
+<p><code>clock.py</code> has one job: parse <code>X-As-Of</code> and return a SQL predicate.
+No timestamp transformation exists anywhere in the server. When <code>X-As-Of</code> is absent
+the default is the encounter's <code>discharge_dttm</code> — the whole stay.</p>
+<div class="note">Because dates are native MIMIC, anything supplying "now" must speak MIMIC time.
+A prompt saying "it is 2023-11-13" against a patient admitted 2110-03-14 returns empty bundles,
+correctly. Harnesses pin the clock relative to <code>admission_dttm</code>.</div>
+<p>Each table declares its own clock column:</p>
+<table>
+<thead><tr><th>Table</th><th>Clock column</th></tr></thead>
+<tbody>
+<tr><td><code>vitals</code>, <code>patient_assessments</code>, <code>position</code>, <code>respiratory_support</code></td><td><code>recorded_dttm</code></td></tr>
+<tr><td><code>labs</code></td><td><code>lab_result_dttm</code></td></tr>
+<tr><td><code>medication_admin_continuous</code> / <code>_intermittent</code></td><td><code>admin_dttm</code></td></tr>
+<tr><td><code>adt</code></td><td><code>in_dttm</code></td></tr>
+<tr><td><code>patient_procedures</code></td><td><code>procedure_billed_dttm</code></td></tr>
+<tr><td><code>hospitalization</code></td><td><code>admission_dttm</code></td></tr>
+<tr><td><code>hospital_diagnosis</code></td><td class="bad">none — no timestamp exists</td></tr>
+</tbody>
+</table>
+<div class="note"><b>Known hole.</b> <code>hospital_diagnosis</code> carries no timestamp, so
+<code>Condition</code> cannot be as-of filtered. Discharge diagnoses are knowable only at
+discharge, so exposing them to an agent reasoning at hour 24 leaks the future. Documented rather
+than hidden; mitigation is a scope decision for the harness, not a server fix.</div>
+
+<h2>Auth</h2>
+<p><code>/.well-known/smart-configuration</code> advertises the token endpoint, supported scopes
+and <code>client_credentials</code>. Tokens come from a <code>tokens.yaml</code>:</p>
+<pre>tokens:
+  agent-readonly:   [ "system/Patient.rs", "system/Observation.rs", "system/Encounter.rs" ]
+  agent-labs-only:  [ "system/Patient.rs", "system/Observation.rs" ]</pre>
+<p>Enforcement is real — unknown token → <code>401</code> + <code>WWW-Authenticate</code>; valid
+token lacking the scope → <code>403</code> + <code>OperationOutcome</code>. In real SMART the
+<em>only</em> output of the whole JWT/JWKS dance is a bearer token with a scope list, so the JWT
+flow can replace token lookup later without touching enforcement.</p>
+
+<h2>Error handling</h2>
+<table>
+<thead><tr><th>Condition</th><th>Response</th></tr></thead>
+<tbody>
+<tr><td>Missing / unknown bearer</td><td><code>401</code> + <code>WWW-Authenticate</code></td></tr>
+<tr><td>Valid token, missing scope</td><td><code>403</code> + OperationOutcome</td></tr>
+<tr><td>Search without patient/encounter context</td><td><code>400</code> + OperationOutcome (<code>code: required</code>)</td></tr>
+<tr><td>Malformed <code>X-As-Of</code></td><td><code>400</code> + OperationOutcome</td></tr>
+<tr><td>Unknown resource type / unknown id</td><td><code>404</code> + OperationOutcome</td></tr>
+<tr><td>Search matching nothing</td><td><code>200</code> + empty searchset Bundle, <code>total: 0</code></td></tr>
+<tr><td>Microbiology endpoints</td><td><code>200</code> + empty Bundle — never <code>404</code></td></tr>
+<tr><td>Any write verb</td><td><code>405</code>, and absent from the CapabilityStatement</td></tr>
+</tbody>
+</table>
+<p>Every error body is a real <code>OperationOutcome</code>. An agent parsing a plain-text 500
+learns nothing; an OperationOutcome tells it whether to retry, narrow, or give up.</p>
+
+<h2>Layout &amp; dependencies</h2>
+<pre>helios/
+  fhir/
+    app.py  auth.py  clock.py  search.py  store.py
+    mappers/  __init__.py  patient.py  encounter.py  observation.py
+              condition.py  procedure.py  medication.py
+    codes/    vitals_loinc.csv  labs_loinc.csv  systems.py
+  mcp/        server.py
+  scripts/    prepare_data.py
+  tests/
+  docker/     fhir.Dockerfile  mcp.Dockerfile
+  config.yaml</pre>
+<pre>site_name: mimic
+data_directory: /Users/sudo_sage/Downloads/work/clif_m
+filetype: parquet
+timezone: US/Eastern</pre>
+<p>Dependencies deliberately few: <code>fastapi</code>, <code>uvicorn</code>,
+<code>duckdb</code>, <code>fhir.resources</code>, <code>pyyaml</code>.
+<b>clifpy is not a dependency</b> — it loads whole tables into pandas with filters, the wrong
+shape for per-request serving. CLIF schemas remain the contract; they are just not read through
+clifpy.</p>
+
+<h2>Testing</h2>
+<p><code>fhir.resources</code> gives pydantic schema validation free, so tests target semantics:</p>
+<ol>
+<li><b>Mapper unit tests</b> — CLIF row dict in, valid FHIR resource out, asserting system + code.</li>
+<li><b>Look-ahead tests</b> <span class="bad">(highest value)</span> — with <code>X-As-Of</code>
+mid-stay, assert no returned row has a clock column after <code>T</code>. Per table, since each
+has its own clock column. This protects the benchmark's validity and is most likely to regress silently.</li>
+<li><b>Scope enforcement</b> — 401 with no token, 403 with the wrong scope, 200 with the right one.</li>
+<li><b>Contract tests</b> — search without patient context is 400; microbiology is 200 + empty; every write verb is 405.</li>
+<li><b>Golden file</b> — one real hospitalization rendered to FHIR, checked in and diffed.</li>
+</ol>
+
+<h2>Build order</h2>
+<table>
+<thead><tr><th style="width:70px">Phase</th><th>Deliverable</th></tr></thead>
+<tbody>
+<tr><td class="num">0</td><td><code>prepare_data.py</code> — re-sort 12 tables by <code>hospitalization_id</code>, build encounter index</td></tr>
+<tr><td class="num">1</td><td><code>store.py</code>, <code>clock.py</code>, Patient + Encounter mappers, routes. No auth</td></tr>
+<tr><td class="num">2</td><td>Observation mappers (vitals, labs, assessments, respiratory, position) + the 54 LOINC rows</td></tr>
+<tr><td class="num">3</td><td>Condition, Procedure, MedicationAdministration</td></tr>
+<tr><td class="num">4</td><td><code>auth.py</code>, discovery document, CapabilityStatement</td></tr>
+<tr><td class="num">5</td><td><code>helios-mcp</code></td></tr>
+</tbody>
+</table>
+<p>Phases 1–4 leave <code>helios-fhir</code> independently runnable and testable. Phase 5 starts
+only after the FHIR server is complete — that is what keeps the dependency one-way.</p>
+
+<h2>Known limitations</h2>
+<ol>
+<li><code>Condition</code> cannot be as-of filtered — <code>hospital_diagnosis</code> has no timestamp. A real look-ahead hole.</li>
+<li>LOINC coverage is 54 curated rows. Medications and assessments are CLIF-native only; an agent expecting RxNorm will not find it.</li>
+<li>Searches without patient context are refused rather than served. Deliberate, matches Epic, but a genuine deviation from unrestricted FHIR search.</li>
+<li>Microbiology endpoints exist but this export has no data behind them.</li>
+<li>Dates are in the 2100s. Anything supplying "now" must speak MIMIC time.</li>
+</ol>
+
+<footer>HELIOS · design approved 2026-09-03 · local plan page, not published ·
+full spec at <code>docs/superpowers/specs/2026-09-03-helios-fhir-mcp-design.md</code></footer>
+
+</div>
+</body>
+</html>
