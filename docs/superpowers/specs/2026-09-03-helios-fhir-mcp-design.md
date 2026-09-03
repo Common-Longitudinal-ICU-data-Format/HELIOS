@@ -144,7 +144,8 @@ memory. It answers identity resolution and stay bounds without touching a fact t
 
 CLIF-native codes use local CodeSystem URIs of the form
 `http://clif-consortium.org/fhir/CodeSystem/{table}-category`, with the CLIF category string
-as the code and `*_name` as `display` when present.
+as the code. The `*_name` column is **never** dropped — see "Why the keys collide" below for
+why discarding it loses clinically load-bearing information.
 
 ### Resource identity
 
@@ -152,10 +153,72 @@ as the code and `*_name` as `display` when present.
 from CLIF.
 
 Fact rows have no natural key, so **resource ids are content-addressed rather than
-surrogate**: `{table}-{hospitalization_id}-{epoch_seconds}-{category}`. The id encodes
-enough to re-find the source row, so `GET /fhir/Observation/{id}` is itself a lazy lookup
-with no id-to-row index. Ids are stable across restarts because they are derived from the
-data, not assigned.
+surrogate**:
+
+```
+{table}-{hospitalization_id}-{epoch_seconds}-{category}-{sha1(full_row)[:8]}
+```
+
+The trailing hash is not optional. `(table, hospitalization_id, second, category)` alone is
+**not unique** — measured on this export, vitals has 710,555 colliding keys (1.3% of rows)
+and labs 36,992 (0.1%). Without the hash, `GET /fhir/Observation/{id}` is ambiguous for
+roughly 750,000 resources.
+
+The hash is safe because full rows *are* unique: vitals has 55,525,580 rows and 55,525,580
+distinct full rows — zero exact duplicates. Every one of the 1,416,321 rows sitting in a
+colliding group differs in `vital_value` or `vital_name`.
+
+The id still encodes enough to re-find the source row, so read-by-id remains a lazy lookup
+with no id-to-row index, and ids stay stable across restarts because they are derived from
+the data rather than assigned.
+
+### Three tables need dedup for the hash to hold
+
+Full-row uniqueness was checked across all 12 in-scope tables. Nine are clean. Three are not:
+
+| table | rows | exact duplicate rows |
+|---|---|---|
+| `patient_procedures` | 1,045,729 | **9,310** (0.89%) |
+| `hospital_diagnosis` | 6,364,488 | **199** (0.003%) |
+| `position` | 3,157,996 | **2** (0.00006%) |
+
+These rows are byte-identical, so no hash can separate them. `prepare_data.py` therefore
+applies `SELECT DISTINCT` to these three tables during the Phase 0 rewrite.
+
+Dedup is the right answer here rather than a positional ordinal, and the reason is semantic:
+a duplicate `hospital_diagnosis` row is the same ICD code recorded twice, and a duplicate
+`patient_procedures` row is the same CPT billed twice. They are billing artifacts, not two
+real events. Emitting two identical `Condition` resources under different ids would show an
+agent the same diagnosis twice — preserving a distinction that does not exist. Contrast
+`vitals`, where colliding rows differ in value and *must* be kept as separate observations.
+
+`prepare_data.py` asserts full-row uniqueness on every table after the rewrite and fails the
+build if it does not hold. That turns the assumption the id scheme rests on into an enforced
+invariant rather than a fact about today's export.
+
+### Why the keys collide, and what it costs
+
+The collisions are not noise. They are two devices measuring the same thing at the same
+minute:
+
+```
+20000147  2121-08-31 23:00  map  75.0  Arterial Blood Pressure mean
+20000147  2121-08-31 23:00  map  79.0  Non Invasive Blood Pressure mean
+```
+
+CLIF's `vital_category` collapses arterial-line and non-invasive cuff into a single `map`.
+The distinguishing information survives only in `vital_name`.
+
+This matters clinically: A-line and cuff pressures are not interchangeable for vasopressor
+titration, and an agent that receives 75 and 79 for the same instant with no way to tell
+them apart is being handed a contradiction it cannot resolve.
+
+**Therefore every mapper MUST preserve the CLIF `*_name` column.** `*_category` is the
+primary `code.coding`; `*_name` goes to `Observation.method.text` where it describes how the
+measurement was taken, and otherwise to a second `code.coding` entry using the CLIF-native
+`*-name` CodeSystem. A mapper that emits only the category is losing clinically load-bearing
+information, and this rule applies to `vitals`, `labs`, `patient_assessments`,
+`respiratory_support`, `position` and both medication tables alike.
 
 ## Request flow
 
@@ -290,12 +353,15 @@ that fails FHIR validation raises. That covers structure, so tests target semant
    with an empty bundle; every write verb is `405`.
 5. **Golden-file test** — one real hospitalization rendered to FHIR, checked in, diffed. Makes
    unintended mapping changes visible in review.
+6. **Resource-id uniqueness test** — for a sample of hospitalizations, assert that every
+   generated id is distinct and that `GET /fhir/{Type}/{id}` round-trips back to the row it
+   was derived from. This is the test that would have caught the 750,000 ambiguous ids.
 
 ## Build order
 
 | Phase | Deliverable |
 |---|---|
-| 0 | `prepare_data.py` — re-sort 12 tables by `hospitalization_id`, build encounter index |
+| 0 | `prepare_data.py` — re-sort 12 tables by `hospitalization_id`, dedup the 3 affected tables, assert full-row uniqueness, build encounter index |
 | 1 | `store.py`, `clock.py`, `Patient` + `Encounter` mappers, routes. No auth |
 | 2 | `Observation` mappers (vitals, labs, assessments, respiratory, position) + the 54 LOINC rows |
 | 3 | `Condition`, `Procedure`, `MedicationAdministration` |
@@ -315,3 +381,9 @@ after the FHIR server is complete, which is what keeps the dependency one-way.
    matches Epic, but it is a genuine deviation from unrestricted FHIR search.
 4. Microbiology endpoints exist but this export has no data behind them.
 5. Dates are in the 2100s. Anything supplying "now" must speak MIMIC time.
+6. `patient_procedures`, `hospital_diagnosis` and `position` are deduplicated at prepare
+   time (9,310 / 199 / 2 rows dropped). Row counts served will not match the raw parquet.
+7. `vital_category` is lossy: arterial and non-invasive blood pressure share the `sbp`/
+   `dbp`/`map` categories. Preserving `vital_name` in `Observation.method` recovers the
+   distinction, but an agent filtering on category alone will still mix measurement methods.
+   1,416,321 vitals rows are affected.

@@ -227,10 +227,51 @@ resolution and stay bounds without touching a fact table.</p>
 <p><code>Patient.id</code> = <code>patient_id</code>; <code>Encounter.id</code> =
 <code>hospitalization_id</code>, both straight from CLIF. Fact rows have no natural key, so
 resource ids are <b>content-addressed rather than surrogate</b>:</p>
-<pre>{table}-{hospitalization_id}-{epoch_seconds}-{category}</pre>
-<p>The id encodes enough to re-find the source row, so <code>GET /fhir/Observation/{id}</code>
-is itself a lazy lookup with no id-to-row index. Ids are stable across restarts because they
-are derived from the data, not assigned.</p>
+<pre>{table}-{hospitalization_id}-{epoch_seconds}-{category}-{sha1(full_row)[:8]}</pre>
+<p>The trailing hash is <b>not optional</b>. Measured on this export, the key without it is not
+unique:</p>
+
+<div class="bar"><div class="t">vitals — colliding keys</div><div class="track"><div class="fill" style="width:100%"></div></div><div class="v">710,555</div></div>
+<div class="bar"><div class="t">labs — colliding keys</div><div class="track"><div class="fill" style="width:5%"></div></div><div class="v">36,992</div></div>
+
+<p>Without the hash, <code>GET /fhir/Observation/{id}</code> would be ambiguous for roughly
+750,000 resources. The hash is safe because full rows <em>are</em> unique — vitals has
+55,525,580 rows and 55,525,580 distinct full rows, <span class="good">zero exact
+duplicates</span>. Read-by-id stays a lazy lookup with no id-to-row index, and ids stay stable
+across restarts because they are derived from data rather than assigned.</p>
+
+<h3>Three tables need dedup for the hash to hold</h3>
+<p>Full-row uniqueness was checked across all 12 in-scope tables. Nine are clean. Three are not:</p>
+<table>
+<thead><tr><th>Table</th><th class="num">Rows</th><th class="num">Exact duplicates</th></tr></thead>
+<tbody>
+<tr><td><code>patient_procedures</code></td><td class="num">1,045,729</td><td class="num bad">9,310 &nbsp;(0.89%)</td></tr>
+<tr><td><code>hospital_diagnosis</code></td><td class="num">6,364,488</td><td class="num bad">199 &nbsp;(0.003%)</td></tr>
+<tr><td><code>position</code></td><td class="num">3,157,996</td><td class="num bad">2</td></tr>
+<tr><td colspan="2">the other nine tables</td><td class="num good">0</td></tr>
+</tbody>
+</table>
+<p>These rows are byte-identical, so no hash can separate them. <code>prepare_data.py</code>
+applies <code>SELECT DISTINCT</code> to these three during the Phase 0 rewrite.</p>
+<div class="note"><b>Dedup, not an ordinal.</b> A duplicate <code>hospital_diagnosis</code> row is
+the same ICD code recorded twice; a duplicate <code>patient_procedures</code> row is the same CPT
+billed twice. Billing artifacts, not two real events. Two identical <code>Condition</code> resources
+under different ids would show an agent the same diagnosis twice — preserving a distinction that
+does not exist. Contrast <code>vitals</code>, where colliding rows <em>differ in value</em> and must
+be kept separate. <code>prepare_data.py</code> asserts full-row uniqueness after the rewrite and
+fails the build otherwise.</div>
+
+<h3>Why the keys collide — and what it costs</h3>
+<p>The collisions are not noise. They are two devices measuring the same thing at the same minute:</p>
+<pre>20000147  2121-08-31 23:00  map  75.0  Arterial Blood Pressure mean
+20000147  2121-08-31 23:00  map  79.0  Non Invasive Blood Pressure mean</pre>
+<p>CLIF's <code>vital_category</code> collapses arterial-line and non-invasive cuff into a single
+<code>map</code>. The distinguishing information survives only in <code>vital_name</code>.</p>
+<div class="note"><b>A-line and cuff pressures are not interchangeable for vasopressor titration.</b>
+An agent handed 75 and 79 for the same instant, with no way to tell them apart, has a contradiction
+it cannot resolve. <b>Every mapper MUST preserve the CLIF <code>*_name</code> column</b> —
+<code>*_category</code> is the primary <code>code.coding</code>, <code>*_name</code> goes to
+<code>Observation.method.text</code>. 1,416,321 vitals rows are affected.</div>
 
 <h2>Request flow</h2>
 <p><code>GET /fhir/Observation?patient=P123&amp;code=creatinine</code> with
@@ -334,13 +375,15 @@ has its own clock column. This protects the benchmark's validity and is most lik
 <li><b>Scope enforcement</b> — 401 with no token, 403 with the wrong scope, 200 with the right one.</li>
 <li><b>Contract tests</b> — search without patient context is 400; microbiology is 200 + empty; every write verb is 405.</li>
 <li><b>Golden file</b> — one real hospitalization rendered to FHIR, checked in and diffed.</li>
+<li><b>Resource-id uniqueness</b> — every generated id distinct, and <code>GET /fhir/{Type}/{id}</code>
+round-trips to the row it came from. The test that would have caught the 750,000 ambiguous ids.</li>
 </ol>
 
 <h2>Build order</h2>
 <table>
 <thead><tr><th style="width:70px">Phase</th><th>Deliverable</th></tr></thead>
 <tbody>
-<tr><td class="num">0</td><td><code>prepare_data.py</code> — re-sort 12 tables by <code>hospitalization_id</code>, build encounter index</td></tr>
+<tr><td class="num">0</td><td><code>prepare_data.py</code> — re-sort 12 tables by <code>hospitalization_id</code>, dedup the 3 affected tables, assert full-row uniqueness, build encounter index</td></tr>
 <tr><td class="num">1</td><td><code>store.py</code>, <code>clock.py</code>, Patient + Encounter mappers, routes. No auth</td></tr>
 <tr><td class="num">2</td><td>Observation mappers (vitals, labs, assessments, respiratory, position) + the 54 LOINC rows</td></tr>
 <tr><td class="num">3</td><td>Condition, Procedure, MedicationAdministration</td></tr>
@@ -358,6 +401,13 @@ only after the FHIR server is complete — that is what keeps the dependency one
 <li>Searches without patient context are refused rather than served. Deliberate, matches Epic, but a genuine deviation from unrestricted FHIR search.</li>
 <li>Microbiology endpoints exist but this export has no data behind them.</li>
 <li>Dates are in the 2100s. Anything supplying "now" must speak MIMIC time.</li>
+<li><code>patient_procedures</code>, <code>hospital_diagnosis</code> and <code>position</code>
+are deduplicated at prepare time (9,310 / 199 / 2 rows dropped). Served row counts will not match
+the raw parquet.</li>
+<li><code>vital_category</code> is lossy: arterial and non-invasive blood pressure share the
+<code>sbp</code>/<code>dbp</code>/<code>map</code> categories. Preserving <code>vital_name</code>
+in <code>Observation.method</code> recovers the distinction, but an agent filtering on category
+alone will still mix measurement methods. <b>1,416,321 rows affected.</b></li>
 </ol>
 
 <footer>HELIOS · design approved 2026-09-03 · local plan page, not published ·
