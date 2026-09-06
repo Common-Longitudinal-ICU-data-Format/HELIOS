@@ -329,7 +329,10 @@ timezone: US/Eastern
 ```
 
 Dependencies are deliberately few: `fastapi`, `uvicorn`, `duckdb`, `fhir.resources`,
-`pyyaml`. **clifpy is not a dependency.** It loads whole tables into pandas with filters,
+`pyyaml`, plus `eval_type_backport`. That last one is not optional: the only interpreter on
+this machine is **Python 3.9.6**, and `fhir.resources` 8.3.0 uses PEP 604 `X | None`
+annotations that 3.9 cannot evaluate. Without the backport, importing any resource model
+raises `TypeError` at import time. **clifpy is not a dependency.** It loads whole tables into pandas with filters,
 which is the wrong shape for per-request serving; DuckDB queries the parquet directly. CLIF
 schemas are still the contract, they are just not read through clifpy.
 
@@ -338,11 +341,21 @@ microbiology tables later is a registry entry plus one module.
 
 ## Testing
 
-The `fhir.resources` pydantic models give schema validation free — constructing a resource
-that fails FHIR validation raises. That covers structure, so tests target semantics:
+`fhir.resources` gives *structural* validation free, but not complete validation. Measured
+against version 8.3.0:
+
+| Rejected automatically | Not rejected |
+|---|---|
+| missing required fields, unknown fields, wrong types, bad `dateTime` format, malformed references, two `value[x]` variants at once | **invalid code enum values** — `status="bogus"` is accepted |
+
+The gap is precisely the coded fields this project cares about most, so tests must assert
+coded values explicitly rather than trusting construction to raise:
 
 1. **Mapper unit tests** — a CLIF row dict in, a valid FHIR resource out, asserting the
    coding system and code are right. One per mapper.
+1b. **Coded-value tests** — assert every `status`, `category` and `intent` literal the mappers
+   emit is a member of its FHIR value set. `fhir.resources` will not catch a typo here, and a
+   bad `status` propagates silently into every resource of that type.
 2. **Look-ahead tests (highest value)** — for a known hospitalization, assert that a query
    with `X-As-Of` set mid-stay returns no row whose clock column is after `T`. Run per table,
    since each has its own clock column. This is the test that protects the benchmark's
