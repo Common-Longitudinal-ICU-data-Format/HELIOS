@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 .idea/
 .DS_Store
+MedAgentBench/
+.venv/
+data/prepared/
