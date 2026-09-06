@@ -79,3 +79,35 @@ def test_limit_is_respected(store):
 
 def test_absent_table_returns_empty(store):
     assert store.query("labs", "H1") == []
+
+
+def test_timestamps_do_not_depend_on_the_machine_timezone(tmp_path):
+    """DuckDB renders TIMESTAMPTZ in its session zone; pin it from config."""
+    import os
+    import time
+    src, out = tmp_path / "s2", tmp_path / "o2"
+    src.mkdir()
+    out.mkdir()
+    duckdb.connect().execute(f"""COPY (SELECT * FROM (VALUES
+        ('H1','P1',TIMESTAMPTZ '2110-01-01 12:00:00+00',TIMESTAMPTZ '2110-01-05 12:00:00+00')
+      ) t(hospitalization_id,patient_id,admission_dttm,discharge_dttm))
+      TO '{src}/clif_hospitalization.parquet'""")
+    cfg = Config("test", src, out, "parquet", "US/Eastern")
+    prepare(cfg, tables=["hospitalization"])
+
+    def offset():
+        return Store(cfg).encounter("H1")["admission_dttm"].utcoffset()
+
+    before = os.environ.get("TZ")
+    try:
+        os.environ["TZ"] = "UTC"; time.tzset()
+        a = offset()
+        os.environ["TZ"] = "Asia/Kolkata"; time.tzset()
+        b = offset()
+    finally:
+        if before is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = before
+        time.tzset()
+    assert a == b

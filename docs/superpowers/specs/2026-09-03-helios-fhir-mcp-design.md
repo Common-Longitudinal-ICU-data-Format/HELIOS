@@ -384,6 +384,28 @@ coded values explicitly rather than trusting construction to raise:
 Phases 1-4 leave `helios-fhir` independently runnable and testable. Phase 5 starts only
 after the FHIR server is complete, which is what keeps the dependency one-way.
 
+## Deviations found during implementation
+
+Recorded here because each contradicts something the design assumed.
+
+1. **FHIR R4B, not R4.** `fhir.resources` 8.3.0 ships R4B and STU3 subpackages and defaults
+   to R5; there is no plain R4 (4.0.1). All mappers import `fhir.resources.R4B.*` and the
+   CapabilityStatement declares `4.3.0`. R4B also makes `Encounter.class` required, so
+   hospitalizations are coded `IMP` (inpatient).
+2. **`pytz` is a required dependency.** DuckDB raises `InvalidInputException` when returning
+   timezone-aware timestamps without it, and this export's timestamps are tz-aware.
+3. **Two timezone-determinism bugs.** `datetime.timestamp()` on a naive value uses the
+   machine's local zone, which would have made content-addressed resource ids differ between
+   machines; and DuckDB renders `TIMESTAMPTZ` in its session zone, which defaulted to the
+   machine's (`America/Chicago` here) rather than the configured `US/Eastern`. Both are now
+   pinned: `helios/fhir/times.py` anchors naive values to UTC for epochs, and `Store` issues
+   `SET TimeZone` from config. Regression tests flip `TZ` and assert stability.
+4. **FHIR ids forbid underscores.** Every CLIF table name contains one, so `ids.py` carries a
+   bijective short-code map (`vitals` -> `vit`, `patient_assessments` -> `asm`, ...). This also
+   keeps ids inside the 64-character FHIR limit.
+5. **`Condition` emits `clinicalStatus`, not `status`.** The plan had it emit a bare `status`
+   field for test convenience; that is not a valid `Condition` element.
+
 ## Known limitations
 
 1. `Condition` cannot be as-of filtered — `hospital_diagnosis` has no timestamp. Documented

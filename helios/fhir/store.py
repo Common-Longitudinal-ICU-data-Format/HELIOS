@@ -18,6 +18,11 @@ class Store:
     def __init__(self, config: Config) -> None:
         self.config = config
         self._con = duckdb.connect()
+        # Pin the session zone: DuckDB otherwise renders TIMESTAMPTZ in the
+        # machine's local zone, so the same row would serialise with different
+        # offsets on different machines.
+        self._con.execute(f"SET TimeZone = '{config.timezone}'")
+        self._con.execute("SET enable_progress_bar = false")  # server, not a REPL
         self._by_hosp: Dict[str, Dict[str, Any]] = {}
         self._by_patient: Dict[str, List[Dict[str, Any]]] = {}
         self._load_encounter_index()
