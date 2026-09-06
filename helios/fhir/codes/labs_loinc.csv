@@ -1,0 +1,46 @@
+category,loinc,display,unit
+albumin,1751-7,Albumin [Mass/volume] in Serum or Plasma,g/dL
+alkaline_phosphatase,6768-6,Alkaline phosphatase [Enzymatic activity/volume],U/L
+alt,1742-6,Alanine aminotransferase,U/L
+ast,1920-8,Aspartate aminotransferase,U/L
+basophils_absolute,704-7,Basophils [#/volume] in Blood,10*3/uL
+basophils_percent,706-2,Basophils/100 leukocytes in Blood,%
+bicarbonate,1963-8,Bicarbonate [Moles/volume] in Serum or Plasma,mmol/L
+bilirubin_conjugated,1968-7,Bilirubin.direct [Mass/volume],mg/dL
+bilirubin_total,1975-2,Bilirubin.total [Mass/volume],mg/dL
+bilirubin_unconjugated,1971-1,Bilirubin.indirect [Mass/volume],mg/dL
+bun,3094-0,Urea nitrogen [Mass/volume] in Serum or Plasma,mg/dL
+calcium_ionized,1994-3,Calcium.ionized [Mass/volume],mg/dL
+calcium_total,17861-6,Calcium [Mass/volume] in Serum or Plasma,mg/dL
+chloride,2075-0,Chloride [Moles/volume] in Serum or Plasma,mmol/L
+creatinine,2160-0,Creatinine [Mass/volume] in Serum or Plasma,mg/dL
+crp,1988-5,C reactive protein [Mass/volume] in Serum or Plasma,mg/L
+eosinophils_percent,713-8,Eosinophils/100 leukocytes in Blood,%
+esr,4537-7,Erythrocyte sedimentation rate,mm/h
+ferritin,2276-4,Ferritin [Mass/volume] in Serum or Plasma,ng/mL
+glucose_serum,2345-7,Glucose [Mass/volume] in Serum or Plasma,mg/dL
+hemoglobin,718-7,Hemoglobin [Mass/volume] in Blood,g/dL
+inr,6301-6,INR in Platelet poor plasma by Coagulation assay,{INR}
+lactate,2524-7,Lactate [Moles/volume] in Serum or Plasma,mmol/L
+ldh,2532-0,Lactate dehydrogenase [Enzymatic activity/volume],U/L
+lymphocytes_percent,736-9,Lymphocytes/100 leukocytes in Blood,%
+magnesium,2601-3,Magnesium [Moles/volume] in Serum or Plasma,mg/dL
+monocytes_percent,5905-5,Monocytes/100 leukocytes in Blood,%
+neutrophils_percent,770-8,Neutrophils/100 leukocytes in Blood,%
+pco2_arterial,2019-8,Carbon dioxide [Partial pressure] in Arterial blood,mm[Hg]
+pco2_venous,2021-4,Carbon dioxide [Partial pressure] in Venous blood,mm[Hg]
+ph_arterial,2744-1,pH of Arterial blood,{pH}
+ph_venous,2746-6,pH of Venous blood,{pH}
+phosphate,2777-1,Phosphate [Moles/volume] in Serum or Plasma,mg/dL
+platelet_count,777-3,Platelets [#/volume] in Blood,10*3/uL
+po2_arterial,2703-7,Oxygen [Partial pressure] in Arterial blood,mm[Hg]
+potassium,2823-3,Potassium [Moles/volume] in Serum or Plasma,mmol/L
+pt,5902-2,Prothrombin time,s
+ptt,14979-9,aPTT in Platelet poor plasma by Coagulation assay,s
+so2_arterial,2708-6,Oxygen saturation in Arterial blood,%
+so2_central_venous,20563-3,Oxygen saturation in Venous blood,%
+so2_mixed_venous,2714-4,Oxygen saturation in Mixed venous blood,%
+sodium,2951-2,Sodium [Moles/volume] in Serum or Plasma,mmol/L
+total_protein,2885-2,Protein [Mass/volume] in Serum or Plasma,g/dL
+troponin_t,6598-7,Troponin T.cardiac [Mass/volume] in Serum or Plasma,ng/mL
+wbc,6690-2,Leukocytes [#/volume] in Blood,10*3/uL
