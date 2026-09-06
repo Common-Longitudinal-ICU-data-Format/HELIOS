@@ -65,3 +65,25 @@ def test_every_table_produces_a_legal_id():
     for table in TABLE_CODE:
         rid = make_id(table, A, "20000147", T, "some_long_category_name")
         assert re.fullmatch(r"[A-Za-z0-9\-.]{1,64}", rid), (table, rid, len(rid))
+
+
+def test_ids_do_not_depend_on_the_machine_timezone():
+    """datetime.timestamp() on a naive value uses local time; ids must not."""
+    import os
+    import time
+    from datetime import datetime as dt
+    naive = dt(2121, 8, 31, 23, 0)
+    row = {**A, "recorded_dttm": naive}
+    before = os.environ.get("TZ")
+    try:
+        os.environ["TZ"] = "UTC"; time.tzset()
+        utc_id = make_id("vitals", row, "H1", naive, "map")
+        os.environ["TZ"] = "Asia/Kolkata"; time.tzset()
+        ist_id = make_id("vitals", row, "H1", naive, "map")
+    finally:
+        if before is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = before
+        time.tzset()
+    assert utc_id == ist_id

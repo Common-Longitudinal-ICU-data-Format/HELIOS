@@ -5,6 +5,7 @@ from fhir.resources.R4B.procedure import Procedure
 
 from helios.fhir.codes.systems import code_system_uri
 from helios.fhir.ids import make_id
+from helios.fhir.times import fhir_datetime
 
 
 def to_fhir(row: Dict[str, Any], patient_id: str) -> Dict[str, Any]:
@@ -22,6 +23,6 @@ def to_fhir(row: Dict[str, Any], patient_id: str) -> Dict[str, Any]:
         "encounter": {"reference": f"Encounter/{hosp_id}"},
     }
     if when is not None:
-        resource["performedDateTime"] = when.isoformat()
+        resource["performedDateTime"] = fhir_datetime(when)
     Procedure(**resource)
     return resource

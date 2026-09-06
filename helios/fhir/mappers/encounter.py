@@ -1,6 +1,7 @@
 """CLIF hospitalization -> FHIR Encounter."""
 from typing import Any, Dict, Optional
 
+from helios.fhir.times import fhir_datetime as _iso
 from fhir.resources.R4B.encounter import Encounter
 
 CLIF_ADMISSION = "http://clif-consortium.org/fhir/CodeSystem/hospitalization-category"
@@ -10,8 +11,6 @@ ACT_CODE = "http://terminology.hl7.org/CodeSystem/v3-ActCode"
 INPATIENT = {"system": ACT_CODE, "code": "IMP", "display": "inpatient encounter"}
 
 
-def _iso(value) -> Optional[str]:
-    return value.isoformat() if value is not None else None
 
 
 def to_fhir(row: Dict[str, Any]) -> Dict[str, Any]:

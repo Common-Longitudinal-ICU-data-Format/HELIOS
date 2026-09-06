@@ -1,0 +1,13 @@
+# Static bearer tokens carrying real SMART scope strings. Localhost simulation
+# only. Delete this file to disable auth entirely.
+tokens:
+  agent-readonly:
+    - "system/Patient.rs"
+    - "system/Encounter.rs"
+    - "system/Observation.rs"
+    - "system/Condition.rs"
+    - "system/Procedure.rs"
+    - "system/MedicationAdministration.rs"
+  agent-labs-only:
+    - "system/Patient.rs"
+    - "system/Observation.rs"

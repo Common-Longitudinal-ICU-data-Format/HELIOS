@@ -13,6 +13,8 @@ import re
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from helios.fhir.times import epoch_seconds
+
 # Bijective. Keeps ids FHIR-legal and short; see tests for the coverage check.
 TABLE_CODE = {
     "patient": "pt",
@@ -40,7 +42,7 @@ def _digest(row: Dict[str, Any]) -> str:
 
 def make_id(table: str, row: Dict[str, Any], hosp_id: str,
             clock_value: Optional[datetime], category: Optional[str]) -> str:
-    epoch = int(clock_value.timestamp()) if clock_value is not None else 0
+    epoch = epoch_seconds(clock_value)
     # Hyphen is the field separator, so it cannot survive inside a field.
     # The category segment is decorative: the digest is what identifies a row.
     return "-".join([

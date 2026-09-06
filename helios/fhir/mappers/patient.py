@@ -1,6 +1,7 @@
 """CLIF patient -> FHIR Patient."""
 from typing import Any, Dict, Optional
 
+from helios.fhir.times import fhir_datetime as _iso
 from fhir.resources.R4B.patient import Patient
 
 US_CORE_RACE = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-race"
@@ -9,8 +10,6 @@ US_CORE_ETHNICITY = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-eth
 _GENDER = {"Male": "male", "Female": "female", "Unknown": "unknown"}
 
 
-def _iso(value) -> Optional[str]:
-    return value.isoformat() if value is not None else None
 
 
 def to_fhir(row: Dict[str, Any]) -> Dict[str, Any]:

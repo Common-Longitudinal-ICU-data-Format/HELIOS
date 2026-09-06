@@ -9,6 +9,7 @@ from fhir.resources.R4B.medicationadministration import MedicationAdministration
 
 from helios.fhir.codes.systems import clif_system
 from helios.fhir.ids import make_id
+from helios.fhir.times import fhir_datetime
 
 # CLIF mar_action_category -> FHIR MedicationAdministration.status
 _STATUS = {
@@ -34,7 +35,7 @@ def to_fhir(table: str, row: Dict[str, Any], patient_id: str) -> Dict[str, Any]:
         "context": {"reference": f"Encounter/{hosp_id}"},
     }
     if when is not None:
-        resource["effectiveDateTime"] = when.isoformat()
+        resource["effectiveDateTime"] = fhir_datetime(when)
 
     dosage: Dict[str, Any] = {}
     if row.get("med_route_category"):

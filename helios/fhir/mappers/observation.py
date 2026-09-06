@@ -11,6 +11,7 @@ from fhir.resources.R4B.observation import Observation
 from helios.fhir.codes.systems import LOINC, UCUM, clif_system, loinc_for
 from helios.fhir.ids import make_id
 from helios.fhir.tables import TABLES
+from helios.fhir.times import fhir_datetime
 
 CATEGORY_BY_TABLE = {
     "vitals": "vital-signs",
@@ -94,7 +95,7 @@ def to_fhir(table: str, row: Dict[str, Any], patient_id: str) -> Dict[str, Any]:
         "encounter": {"reference": f"Encounter/{hosp_id}"},
     }
     if when is not None:
-        resource["effectiveDateTime"] = when.isoformat()
+        resource["effectiveDateTime"] = fhir_datetime(when)
 
     # *_name is the measurement method - never drop it
     name = row.get(spec.name_column) if spec.name_column else None
